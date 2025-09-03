@@ -1,0 +1,34 @@
+{
+  "manifest_version": 2,
+  "name": "Ctrl+Y Tab Navigator",
+  "version": "1.0",
+  "description": "Navigate to previous tab with Ctrl+Y shortcut",
+  
+  "permissions": [
+    "activeTab",
+    "<all_urls>",
+    "tabs"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  
+  "commands": {
+    "ctrl-y-shortcut": {
+      "suggested_key": {
+        "default": "Ctrl+Y"
+      },
+      "description": "Navigate to previous tab"
+    }
+  }
+}
