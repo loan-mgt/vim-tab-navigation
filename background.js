@@ -1,119 +1,166 @@
-// Background script for global key detection and logging
-console.log('Ctrl+Y Key Logger background script started');
+// Background script for vim-style tab navigation
+console.log('Vim Tab Navigation extension started');
 
 // Keep track of the last active tab for navigation
 let lastActiveTabId = null;
 let currentActiveTabId = null;
 
-// Listen for tab activation changes to track previous tab
-browser.tabs.onActivated.addListener((activeInfo) => {
-  lastActiveTabId = currentActiveTabId;
-  currentActiveTabId = activeInfo.tabId;
-  console.log('📋 Tab switched - Previous:', lastActiveTabId, 'Current:', currentActiveTabId);
-});
+// Tab tracking functionality
+const TabTracker = {
+  updateActiveTab: (activeInfo) => {
+    lastActiveTabId = currentActiveTabId;
+    currentActiveTabId = activeInfo.tabId;
+    console.log('📋 Tab switched - Previous:', lastActiveTabId, 'Current:', currentActiveTabId);
+  },
 
-// Initialize current tab on startup
-browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-  if (tabs[0]) {
-    currentActiveTabId = tabs[0].id;
-    console.log('🚀 Initial active tab:', currentActiveTabId);
-  }
-});
-
-// Listen for the keyboard shortcut command (works everywhere in Firefox)
-browser.commands.onCommand.addListener((command) => {
-  if (command === 'ctrl-y-shortcut') {
-    const timestamp = new Date().toISOString();
-    
-    // Get information about the current tab
-    browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-      const currentTab = tabs[0];
-      const tabInfo = {
-        timestamp: timestamp,
-        tabId: currentTab ? currentTab.id : 'unknown',
-        url: currentTab ? currentTab.url : 'unknown',
-        title: currentTab ? currentTab.title : 'unknown',
-        isNewTab: currentTab ? currentTab.url.startsWith('about:') : false,
-        isSettings: currentTab ? currentTab.url.includes('about:preferences') : false
-      };
-      
-      console.log('🎯 CTRL+Y DETECTED - Switching to previous tab:', {
-        current: tabInfo,
-        previousTabId: lastActiveTabId
-      });
-      
-      // Navigate to previous tab if we have one
-      if (lastActiveTabId !== null) {
-        // Check if the previous tab still exists
-        browser.tabs.get(lastActiveTabId).then((previousTab) => {
-          console.log('⬅️ Switching to previous tab:', previousTab.title);
-          browser.tabs.update(lastActiveTabId, { active: true });
-        }).catch((error) => {
-          console.log('❌ Previous tab no longer exists, finding alternative...');
-          // If previous tab is gone, switch to the next available tab
-          browser.tabs.query({ currentWindow: true }).then((allTabs) => {
-            if (allTabs.length > 1) {
-              // Find a different tab (not the current one)
-              const otherTab = allTabs.find(tab => tab.id !== currentTab.id);
-              if (otherTab) {
-                console.log('� Switching to alternative tab:', otherTab.title);
-                browser.tabs.update(otherTab.id, { active: true });
-              }
-            } else {
-              console.log('📝 Only one tab open, cannot switch');
-            }
-          });
-        });
-      } else {
-        console.log('📝 No previous tab recorded, finding last tab...');
-        // If no previous tab tracked, switch to the last tab in the window
-        browser.tabs.query({ currentWindow: true }).then((allTabs) => {
-          if (allTabs.length > 1) {
-            // Get the tab that was most recently accessed (excluding current)
-            const otherTabs = allTabs.filter(tab => tab.id !== currentTab.id);
-            if (otherTabs.length > 0) {
-              // Switch to the last tab in the list
-              const targetTab = otherTabs[otherTabs.length - 1];
-              console.log('🔄 Switching to last available tab:', targetTab.title);
-              browser.tabs.update(targetTab.id, { active: true });
-            }
-          } else {
-            console.log('📝 Only one tab open, cannot switch');
-          }
-        });
+  initialize: async () => {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0]) {
+        currentActiveTabId = tabs[0].id;
+        console.log('🚀 Initial active tab:', currentActiveTabId);
       }
-      
-    }).catch((error) => {
-      console.log('🎯 CTRL+Y DETECTED (could not get tab info):', { timestamp, error });
-    });
+    } catch (error) {
+      console.error('Error initializing tab tracker:', error);
+    }
   }
-});
+};
 
-// Listen for messages from content scripts (for websites)
+// Tab navigation functionality
+const TabNavigator = {
+  switchToPreviousTab: async () => {
+    try {
+      const currentTab = await TabNavigator.getCurrentTab();
+      const allTabs = await browser.tabs.query({ currentWindow: true });
+      
+      console.log('🎯 CTRL+Y - Switching to previous tab by index');
+      
+      if (allTabs.length <= 1) {
+        console.log('📝 Only one tab open, cannot switch to previous');
+        return;
+      }
+
+      const currentIndex = allTabs.findIndex(tab => tab.id === currentTab.id);
+      const previousIndex = currentIndex === 0 ? allTabs.length - 1 : currentIndex - 1;
+      const previousTab = allTabs[previousIndex];
+      
+      console.log('⬅️ Switching to previous tab:', previousTab.title);
+      await browser.tabs.update(previousTab.id, { active: true });
+    } catch (error) {
+      console.error('Error switching to previous tab:', error);
+    }
+  },
+
+  switchToNextTab: async () => {
+    try {
+      const currentTab = await TabNavigator.getCurrentTab();
+      const allTabs = await browser.tabs.query({ currentWindow: true });
+      
+      console.log('🎯 CTRL+E - Switching to next tab');
+      
+      if (allTabs.length <= 1) {
+        console.log('📝 Only one tab open, cannot switch to next');
+        return;
+      }
+
+      const currentIndex = allTabs.findIndex(tab => tab.id === currentTab.id);
+      const nextIndex = (currentIndex + 1) % allTabs.length;
+      const nextTab = allTabs[nextIndex];
+      
+      console.log('➡️ Switching to next tab:', nextTab.title);
+      await browser.tabs.update(nextTab.id, { active: true });
+    } catch (error) {
+      console.error('Error switching to next tab:', error);
+    }
+  },
+
+  getCurrentTab: async () => {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    return tabs[0];
+  },
+
+  switchToTabById: async (tabId, direction) => {
+    try {
+      const targetTab = await browser.tabs.get(tabId);
+      console.log(`⬅️ Switching to ${direction} tab:`, targetTab.title);
+      await browser.tabs.update(tabId, { active: true });
+    } catch (error) {
+      console.log(`❌ ${direction} tab no longer exists, finding alternative...`);
+      const currentTab = await TabNavigator.getCurrentTab();
+      await TabNavigator.switchToAlternativeTab(currentTab, 'alternative');
+    }
+  },
+
+  switchToAlternativeTab: async (currentTab, type) => {
+    const allTabs = await browser.tabs.query({ currentWindow: true });
+    
+    if (allTabs.length <= 1) {
+      console.log('📝 Only one tab open, cannot switch');
+      return;
+    }
+
+    const otherTabs = allTabs.filter(tab => tab.id !== currentTab.id);
+    if (otherTabs.length === 0) return;
+
+    const targetTab = type === 'last' 
+      ? otherTabs[otherTabs.length - 1]
+      : otherTabs[0];
+    
+    console.log(`🔄 Switching to ${type} available tab:`, targetTab.title);
+    await browser.tabs.update(targetTab.id, { active: true });
+  }
+};
+
+// Command handler
+const CommandHandler = {
+  handleCommand: (command) => {
+    const timestamp = new Date().toISOString();
+    console.log(`⌨️ Command received: ${command} at ${timestamp}`);
+    
+    switch (command) {
+      case 'ctrl-y-shortcut':
+        TabNavigator.switchToPreviousTab();
+        break;
+      case 'ctrl-e-shortcut':
+        TabNavigator.switchToNextTab();
+        break;
+      default:
+        console.log('Unknown command:', command);
+    }
+  }
+};
+
+// Event listeners
+browser.tabs.onActivated.addListener(TabTracker.updateActiveTab);
+browser.commands.onCommand.addListener(CommandHandler.handleCommand);
+
+// Initialize the extension
+TabTracker.initialize();
+
+// Listen for messages from content scripts
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'CTRL_Y_PRESSED') {
-    console.log('🌐 CTRL+Y FROM CONTENT SCRIPT:', {
+  if (message.type === 'CTRL_Y_PRESSED' || message.type === 'CTRL_E_PRESSED') {
+    console.log(`🌐 ${message.shortcut || message.type} FROM CONTENT SCRIPT:`, {
       timestamp: message.timestamp,
       url: message.url,
       title: message.title,
-      tabId: sender.tab ? sender.tab.id : 'unknown'
+      tabId: sender.tab ? sender.tab.id : 'unknown',
+      action: message.action || 'navigation'
     });
     
     sendResponse({ received: true });
   }
 });
 
-// Optional: Log when the extension starts up
+// Startup and installation handlers
 browser.runtime.onStartup.addListener(() => {
-  console.log('🚀 Ctrl+Y Key Logger extension started up');
+  console.log('🚀 Vim Tab Navigation extension started up');
 });
 
-// Optional: Log when extension is installed
 browser.runtime.onInstalled.addListener((details) => {
-  console.log('📦 Ctrl+Y Key Logger extension installed/updated:', details.reason);
+  console.log('📦 Vim Tab Navigation extension installed/updated:', details.reason);
   
-  // Show a notification that the extension is ready
   if (details.reason === 'install') {
-    console.log('✅ Extension ready! Ctrl+Y will now be logged everywhere in Firefox.');
+    console.log('✅ Extension ready! Ctrl+Y (previous tab) and Ctrl+E (next tab) are now available.');
   }
 });
