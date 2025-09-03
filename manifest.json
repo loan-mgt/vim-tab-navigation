@@ -1,8 +1,9 @@
 {
+  "browser_specific_settings": {"gecko": {"id": "{5d5be502-6867-40a4-9bc3-d267cc796e85}"}},
   "manifest_version": 2,
   "name": "Vim Tab Navigator",
-  "version": "1.1",
-  "description": "Vim-style tab navigation with Ctrl+Y (previous) and Ctrl+E (next)",
+  "version": "1.2",
+  "description": "Vim-style tab navigation",
   
   "permissions": [
     "activeTab",
@@ -36,5 +37,9 @@
       },
       "description": "Navigate to next tab"
     }
+  },
+  "custom_license": {
+    "name": "GPL-3.0",
+    "url": "https://www.gnu.org/licenses/gpl-3.0.html"
   }
 }
